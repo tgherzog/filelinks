@@ -1,0 +1,337 @@
+<?php
+
+
+/**
+ * Implementation of hook_filter_tips().
+ */
+function filelinks_filter_tips($delta, $format, $long = false) {
+
+  if( $long ) {
+    return t('Filelink macros, e.g. [flink filename.pdf]  insert links to local files. Some examples:') . theme('item_list',
+	  array('<b>[flink filename.pdf|title=New Title]</b> (use specified title instead of filename.pdf))',
+	  '<b>[flink filename.pdf|title=New Title|show_pagecount=0]</b> (override the default page count option)',
+	  '<b>[flink filename.pdf|description=Contains interesting information]</b> (add descriptive text along with file size, page count, etc)'));
+  }
+  else {
+    return t('[flink] macros expand to local file links.');
+  }
+}
+
+function filelinks_filter($op, $delta = 0, $format = -1, $text = '') {
+  switch ($op) {
+    case 'list':
+      return (array(0 => t('File Links filter')));
+
+    case 'name':
+      return t('File Link filter');
+
+    case 'description':
+      return t('Lets you easily add hyperlinks and descriptions to files on your website\'s server.');
+
+    case 'settings':
+      switch($delta) {
+        case 0:
+	  return _filelinks_filter_settings($format);
+	default:
+	  return;
+      }
+
+    case 'process':
+      $params = array();
+      $params['show_filesize'] = variable_get("filelinks_filesize_$format", 0);
+      $params['show_description'] = variable_get("filelinks_imgsize_$format", 0);
+      $params['show_pagecount'] = variable_get("filelinks_pagecount_$format", 0);
+      $params['paths'] = preg_split('(\r\n?|\n)', trim(variable_get("filelinks_paths_$format", '')));
+      foreach (filelinks_get_macros($text, $params) as $unexpanded_macro => $macro) {
+        $expanded_macro = filelinks_render($macro, $params);
+        $text = str_replace($unexpanded_macro, $expanded_macro, $text);
+      }
+      return $text;
+
+    case 'no cache':
+      // return TRUE;
+	  return ! variable_get('cache', 0);
+
+    default:
+      return $text;
+  }
+}
+
+function _filelinks_filter_settings($format) {
+  $form['filter_filelinks'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('File Links filter'),
+    '#collapsible' => TRUE,
+  );
+  $form['filter_filelinks']['filelinks_defaults'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Default parameters'),
+    '#collapsible' => FALSE,
+	'#description' => t('These settings will be used for file display unless otherwise specified in the macro.'),
+  );
+  $form['filter_filelinks']['filelinks_defaults']["filelinks_filesize_$format"] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Show file size'),
+    '#default_value' => variable_get("filelinks_filesize_$format", 0),
+	'#description' => t('Macros may override this parameter with <i>size=1|0</i>.'),
+  );
+  $form['filter_filelinks']['filelinks_defaults']["filelinks_imgsize_$format"] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Show image dimensions'),
+    '#default_value' => variable_get("filelinks_imgsize_$format", 0),
+	'#description' => t('Macros may override this parameter with <i>dimensions=1|0</i>.'),
+  );
+  $form['filter_filelinks']['filelinks_defaults']["filelinks_pagecount_$format"] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Show page count'),
+    '#default_value' => variable_get("filelinks_pagecount_$format", 0),
+	'#description' => t('Macros may override this parameter with <i>show_pagecount=1|0</i>.'),
+  );
+  $form['filter_filelinks']["filelinks_paths_$format"] = array(
+    '#type' => 'textarea',
+    '#title' => t('Search locations'),
+    '#default_value' => variable_get("filelinks_paths_$format", ''),
+    '#description' => t('This field specifies how to search for and refer to files. Each line is its own location, and contains three parameters separated by spaces. See !help for more information.', array('!help' => l('help', 'admin/help/filelinks'))),
+  );
+  return $form;
+}
+
+/*
+ * implementation of hook_help
+ */
+
+function filelinks_help($section) {
+
+  switch($section) {
+    case 'admin/modules#filelinks':
+	  return t('Input filter to easily and hyperlinks and descriptions for files on your server');
+
+    case 'admin/help#filelinks':
+	  $text = '<p>' . t('The filelinks module adds a filter that lets you quickly add informative hyperlinks to files on your website\'s server via macros. For example:') . '</p><p>[flink&nbsp;filename.pdf|text=My&nbsp;PDF]</p>';
+	  $text .= '<p>' . t('can automatically become:') . '</p><p>' . htmlspecialchars('<a href="http://pdf.company.org/downloads/filename.pdf">My PDF</a> (2.3 Mb, 98 pages)') . '</p>';
+	  $text .= '<p>' . t('Macros are in the form <b>[flink(_tag) filename (parameters)]</b>. The parenthetical parts are optional. Parameters are each preceded by "|". You configure the filter to look at one or more directories to find files. The "_tag" part lets you specify which directory to look in. If you omit the tag, the filter looks at all directories in order until it finds the specified file.') . '</p>';
+	  $text .= '<h3>' . t('Configuration') . '</h3>';
+	  $text .= '<p>' . t('You must specify "search locations" in which the filter will look for files referenced in the macros. Each location is a directory reference, one per line, with three fields each: tag directory url (url is optional). ') . '</p>';
+
+	  $text .= theme('item_list',
+	    array(t('<b>tag:</b> identifies the directory to the macro.'),
+		  array('data' => t('<b>directory:</b> a unix-style path: path/to/directory'),
+		    'children' => array(t('If the path starts with "/" and there is no url parameter, then the path is relative to drupal\'s root directory.'),
+			  t('If the path starts with "/" and there is a url parameter, then the path is an <i>absolute</i> path on the server, somewhere in the DocumentRoot for that domain. So pay attention to security.'),
+			  t('If the path does not start with "/" it is relative to the site configuration directory.'))),
+		  t('<b>url:</b> you can create links to files in other domains so long as they are hosted by the same server as your drupal site. If you include a url it is prepended to the file name in the link.')));
+
+	  $text .= '<h3>' . t('Parameters') . '</h3>';
+	  $text .= theme('item_list',
+	    array(t('<b>text</b> = link\'s text (instead of the file name)'),
+		'<b>description</b> = descriptive text (included with file statistics)',
+		'<b>show_filesize</b> = [1|0] (overrides default settings)',
+		'<b>show_dimensions</b> = [1|0] (shows image dimensions&mdash;overrides default settings)',
+		'<b>show_pagecount</b> = [1|0] (number of pages in pdf;&mdash;overrides default settings)'));
+
+	  return $text;
+  }
+
+  return '';
+}
+
+function filelinks_get_macros($text, $params) {
+  $m = array();
+
+  preg_match_all('/\[flink([^\[\]]+)*\]/i', $text, $matches);
+  $tag_match = (array) array_unique($matches[1]); // Don't process duplicates.
+
+  foreach ($tag_match as $macro) {
+    $vars = array();
+    $id = '';
+
+    $current_macro = '[flink'. $macro .']';
+    $param = array_map('trim', explode('|', $macro));
+    $file_name = array_shift($param); // first parameter is the file name, not key=value
+    if( preg_match('/^_(\w+)\s+(.+)/', $file_name, $parts) ) {
+      $id = $parts[1];
+      $file_name = $parts[2];
+    }
+
+    foreach ($param as $p) {
+      $pos = strpos($p, '=');
+      $varname = substr($p, 0, $pos);
+      $varvalue = substr($p, $pos + 1);
+      $vars[trim($varname)] = $varvalue;
+    }
+
+	foreach(array('show_filesize', 'show_dimensions', 'show_pagecount') as $p ) {
+	  if( !isset($vars[p]) ) {
+	    $vars[$p] = $params[$p];
+	  }
+	}
+
+    $vars['filename'] = $file_name;
+    $vars['id'] = strtolower($id);
+
+    // the full unaltered filter string is the key for the array of filter attributes
+    $m[$current_macro] = $vars;
+  }
+
+  return $m;
+}
+
+function filelinks_render($m,$params) {
+
+  // Go search for the file
+  foreach($params['paths'] as $path) {
+    list($id,$dir,$url) = preg_split('/\s+/', $path);
+
+	$dir = preg_replace('|/$|', '', $dir);  // no trailing slash please
+
+    // if not start with /, make relative to configuration directory
+    if( substr($dir,0,1) != '/' ) {
+      $dir = conf_path() . "/$dir";
+	}
+	elseif( ! $url ) {
+	  $dir = substr($dir, 1);		// chop the leading slash: it will get added later
+    }
+
+    $fullpath = "$dir/$m[filename]";
+    if( file_exists($fullpath) && (strtolower($id) == $m['id'] || ! $m['id']) ) {
+      $info = filelinks_file_attributes($fullpath);
+
+      if(!isset($m['text']) ) {
+        $m['text'] = $info['name'];
+      }
+
+      if( $url ) {
+        if( substr($url, -1, 1) != '/' ) {
+	      $url .= '/';
+	    }
+
+        $url .= urlencode($m['filename']);
+      }
+      else {
+        $url = base_path() . "$dir/" . urlencode($m['filename']);
+      }
+
+      // define extra parameters
+      $more = array();
+      if( $m['show_filesize'] && isset($info['size_']) )
+        $more[] = $info['size_'];
+      if( $m['show_dimensions'] && isset($info['width']) && isset($info['height']) )
+        $more[] = "$info[width] x $info[height] px";
+      if( $m['show_pagecount'] && isset($info['pages']) )
+        $more[] = $info[pages] . t('pages');
+      if( $m['description'] ) {
+        $more[] = check_plain($m['description']);
+      }
+
+      if( count($more) ) {
+        $extra = " (" . implode(", ", $more) . ")";
+      }
+
+      $link = '<a class="filelink';
+      if( $info['type'] ) {
+        $link .= " filelink_$info[extension]";
+      }
+
+      $link .= '" href="' . $url . '" title="' . $m['text'] . '">' . check_plain($m['text']) . '</a>' . $extra;
+      return $link;
+    }
+  }
+
+  // else, file doesn't exist, so just return its name
+  if( !isset($m['text']) ) {
+    $m['text'] = basename($m['filename']);
+  }
+
+  return check_plain($m['text']);
+}
+
+function filelinks_file_attributes($file) {
+
+  $info = pathinfo($file);
+  $attr = array();
+  $ext = strtolower($info['extension']);
+  if( $ext == 'jpeg' ) {
+    $ext = 'jpg';
+  }
+
+  $attr['name'] = $info['basename'];
+  $attr['type'] = $ext;
+  if( ($sz = @filesize($file)) === false )
+    return $attr;
+
+  $attr['size'] = $sz;
+
+  // Also show in readable form
+  if( $sz > 1048756 )
+    $attr['size_'] = number_format($sz/1048756, 1, '.', '') . ' Mb';
+  elseif( $sz > 1024 )
+    $attr['size_'] = number_format($sz/1024, 0) . ' Kb';
+  else
+    $attr['size_'] = number_format($sz, 0) . ' bytes';
+
+  if( !($f = fopen($file, 'r')) ) {
+    return $attr;
+  }
+
+  if( $ext == 'pdf' && ($c = _pdf_pagecount($f)) !== false ) {
+    $attr['pages'] = $c;
+  }
+
+  if( $ext == 'gif' ) {
+    fseek($f, 6);
+    $attr = array_merge($attr, unpack("vwidth/vheight", fread($f, 4)));
+  }
+  elseif( $ext == 'jpg' ) {
+    fseek($f, 0);
+    $attr['width'] = $attr['height'] = '???';
+    while( !feof($f) ) {
+      $tag = unpack("nsize", fread($f, 2));
+      $tag = $tag['size'];
+      if( $tag == 0xFFD8 ) {
+        // for some reason this tag has no length
+	$len = 0;
+      }
+      else {
+        $len = unpack("nlen", fread($f, 2));
+	$len = $len['len'];
+	$len -= 2;
+      }
+
+      if( $tag == 65472 || $tag == 65474 ) {
+        $attr = array_merge($attr, unpack("cdummy/nheight/nwidth", fread($f, 6)));
+	break;
+      }
+
+      // advance to next tag
+      fseek($f, $len, SEEK_CUR);
+    }
+  }
+  elseif( $ext == 'png' ) {
+    fseek($f, 16);
+    $attr = array_merge($attr, unpack("Nwidth/Nheight", fread($f, 8)));
+  }
+
+  fclose($f);
+  return $attr;
+}
+
+function _pdf_pagecount($f)
+{
+
+  fseek($f, 0);
+
+  // read a minimal number of lines
+  for($i=0;$i<5;$i++) {
+    $str = rtrim(fgets($f, 100));
+    if( preg_match("/obj <</", $str) ) {
+      foreach(explode('/', $str) as $entry) {
+        list($key,$value) = preg_split('/ +/', $entry);
+	if( strtoupper($key) == 'N' ) {
+	  return $value;
+	}
+      }
+    }
+  }
+
+  return false;
+}
