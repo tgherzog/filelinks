@@ -39,7 +39,7 @@ function filelinks_filter($op, $delta = 0, $format = -1, $text = '') {
     case 'process':
       $params = array();
       $params['show_filesize'] = variable_get("filelinks_filesize_$format", 0);
-      $params['show_description'] = variable_get("filelinks_imgsize_$format", 0);
+      $params['show_dimensions'] = variable_get("filelinks_imgsize_$format", 0);
       $params['show_pagecount'] = variable_get("filelinks_pagecount_$format", 0);
       $params['paths'] = preg_split('(\r\n?|\n)', trim(variable_get("filelinks_paths_$format", '')));
       foreach (filelinks_get_macros($text, $params) as $unexpanded_macro => $macro) {
@@ -73,13 +73,13 @@ function _filelinks_filter_settings($format) {
     '#type' => 'checkbox',
     '#title' => t('Show file size'),
     '#default_value' => variable_get("filelinks_filesize_$format", 0),
-	'#description' => t('Macros may override this parameter with <i>size=1|0</i>.'),
+	'#description' => t('Macros may override this parameter with <i>show_filesize=1|0</i>.'),
   );
   $form['filter_filelinks']['filelinks_defaults']["filelinks_imgsize_$format"] = array(
     '#type' => 'checkbox',
     '#title' => t('Show image dimensions'),
     '#default_value' => variable_get("filelinks_imgsize_$format", 0),
-	'#description' => t('Macros may override this parameter with <i>dimensions=1|0</i>.'),
+	'#description' => t('Macros may override this parameter with <i>show_dimensions=1|0</i>.'),
   );
   $form['filter_filelinks']['filelinks_defaults']["filelinks_pagecount_$format"] = array(
     '#type' => 'checkbox',
@@ -205,10 +205,10 @@ function filelinks_render($m,$params) {
 	      $url .= '/';
 	    }
 
-        $url .= urlencode($m['filename']);
+        $url .= $m['filename'];
       }
       else {
-        $url = base_path() . "$dir/" . urlencode($m['filename']);
+        $url = base_path() . "$dir/" . $m['filename'];
       }
 
       // define extra parameters
@@ -216,9 +216,9 @@ function filelinks_render($m,$params) {
       if( $m['show_filesize'] && isset($info['size_']) )
         $more[] = $info['size_'];
       if( $m['show_dimensions'] && isset($info['width']) && isset($info['height']) )
-        $more[] = "$info[width] x $info[height] px";
+        $more[] = "$info[width]&nbsp;x&nbsp;$info[height]&nbsp;px";
       if( $m['show_pagecount'] && isset($info['pages']) )
-        $more[] = $info[pages] . t('pages');
+        $more[] = $info[pages] . '&nbsp;' . t('pages');
       if( $m['description'] ) {
         $more[] = check_plain($m['description']);
       }
@@ -263,11 +263,11 @@ function filelinks_file_attributes($file) {
 
   // Also show in readable form
   if( $sz > 1048756 )
-    $attr['size_'] = number_format($sz/1048756, 1, '.', '') . ' Mb';
+    $attr['size_'] = number_format($sz/1048756, 1, '.', '') . '&nbsp;Mb';
   elseif( $sz > 1024 )
-    $attr['size_'] = number_format($sz/1024, 0) . ' Kb';
+    $attr['size_'] = number_format($sz/1024, 0) . '&nbsp;Kb';
   else
-    $attr['size_'] = number_format($sz, 0) . ' bytes';
+    $attr['size_'] = number_format($sz, 0) . '&nbsp;bytes';
 
   if( !($f = fopen($file, 'r')) ) {
     return $attr;
