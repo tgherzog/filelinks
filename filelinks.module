@@ -38,9 +38,10 @@ function filelinks_filter($op, $delta = 0, $format = -1, $text = '') {
 
     case 'process':
       $params = array();
-      $params['show_filesize'] = variable_get("filelinks_filesize_$format", 0);
-      $params['show_dimensions'] = variable_get("filelinks_imgsize_$format", 0);
-      $params['show_pagecount'] = variable_get("filelinks_pagecount_$format", 0);
+      $params['show_filetype'] = variable_get("filelinks_filetype_$format", 1);
+      $params['show_filesize'] = variable_get("filelinks_filesize_$format", 1);
+      $params['show_dimensions'] = variable_get("filelinks_imgsize_$format", 1);
+      $params['show_pagecount'] = variable_get("filelinks_pagecount_$format", 1);
       $params['paths'] = preg_split('(\r\n?|\n)', trim(variable_get("filelinks_paths_$format", '')));
       foreach (filelinks_get_macros($text, $params) as $unexpanded_macro => $macro) {
         $expanded_macro = filelinks_render($macro, $params);
@@ -69,22 +70,28 @@ function _filelinks_filter_settings($format) {
     '#collapsible' => FALSE,
 	'#description' => t('These settings will be used for file display unless otherwise specified in the macro.'),
   );
+  $form['filter_filelinks']['filelinks_defaults']["filelinks_filetype_$format"] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Show file type'),
+    '#default_value' => variable_get("filelinks_filetype_$format", 1),
+	'#description' => t('Macros may override this parameter with <i>show_filetype=1|0</i>.'),
+  );
   $form['filter_filelinks']['filelinks_defaults']["filelinks_filesize_$format"] = array(
     '#type' => 'checkbox',
     '#title' => t('Show file size'),
-    '#default_value' => variable_get("filelinks_filesize_$format", 0),
+    '#default_value' => variable_get("filelinks_filesize_$format", 1),
 	'#description' => t('Macros may override this parameter with <i>show_filesize=1|0</i>.'),
   );
   $form['filter_filelinks']['filelinks_defaults']["filelinks_imgsize_$format"] = array(
     '#type' => 'checkbox',
     '#title' => t('Show image dimensions'),
-    '#default_value' => variable_get("filelinks_imgsize_$format", 0),
+    '#default_value' => variable_get("filelinks_imgsize_$format", 1),
 	'#description' => t('Macros may override this parameter with <i>show_dimensions=1|0</i>.'),
   );
   $form['filter_filelinks']['filelinks_defaults']["filelinks_pagecount_$format"] = array(
     '#type' => 'checkbox',
     '#title' => t('Show page count'),
-    '#default_value' => variable_get("filelinks_pagecount_$format", 0),
+    '#default_value' => variable_get("filelinks_pagecount_$format", 1),
 	'#description' => t('Macros may override this parameter with <i>show_pagecount=1|0</i>.'),
   );
   $form['filter_filelinks']["filelinks_paths_$format"] = array(
@@ -154,14 +161,24 @@ function filelinks_get_macros($text, $params) {
     }
 
     foreach ($param as $p) {
-      $pos = strpos($p, '=');
-      $varname = substr($p, 0, $pos);
-      $varvalue = substr($p, $pos + 1);
-      $vars[trim($varname)] = $varvalue;
+      if( ($pos = strpos($p, '=')) === false ) {
+	    $vars[trim($p)] = '';
+	  }
+	  else {
+        $varname = substr($p, 0, $pos);
+        $varvalue = substr($p, $pos + 1);
+        $vars[trim($varname)] = $varvalue;
+	  }
     }
 
-	foreach(array('show_filesize', 'show_dimensions', 'show_pagecount') as $p ) {
-	  if( !isset($vars[p]) ) {
+	foreach(array('show_filesize', 'show_dimensions', 'show_pagecount','show_filetype') as $p ) {
+	  if( isset($vars['show_all']) ) {
+	    $vars[$p] = 1;
+	  }
+	  elseif( isset($vars['show_none']) ) {
+	    $vars[$p] = 0;
+	  }
+	  elseif( !isset($vars[$p]) ) {
 	    $vars[$p] = $params[$p];
 	  }
 	}
@@ -177,6 +194,8 @@ function filelinks_get_macros($text, $params) {
 }
 
 function filelinks_render($m,$params) {
+
+  $show_filetype = $m['show_filetype'];		// the default
 
   // Go search for the file
   foreach($params['paths'] as $path) {
@@ -198,6 +217,7 @@ function filelinks_render($m,$params) {
 
       if(!isset($m['text']) ) {
         $m['text'] = $info['name'];
+		$show_filetype = false;
       }
 
       if( $url ) {
@@ -213,23 +233,25 @@ function filelinks_render($m,$params) {
 
       // define extra parameters
       $more = array();
+      if( $show_filetype && isset($info['type']) )
+        $more[] = strtoupper($info['type']);
       if( $m['show_filesize'] && isset($info['size_']) )
         $more[] = $info['size_'];
       if( $m['show_dimensions'] && isset($info['width']) && isset($info['height']) )
         $more[] = "$info[width]&nbsp;x&nbsp;$info[height]&nbsp;px";
       if( $m['show_pagecount'] && isset($info['pages']) )
-        $more[] = $info[pages] . '&nbsp;' . t('pages');
+		$more[] = format_plural($info['pages'], '1&nbsp;page', '@count&nbsp;pages');
       if( $m['description'] ) {
         $more[] = check_plain($m['description']);
       }
 
       if( count($more) ) {
-        $extra = " (" . implode(", ", $more) . ")";
+        $extra = ' <span class="filelink_description">(' . implode(', ', $more) . ')</span>';
       }
 
       $link = '<a class="filelink';
       if( $info['type'] ) {
-        $link .= " filelink_$info[extension]";
+        $link .= ' filelink_' . strtolower($info['type']);
       }
 
       $link .= '" href="' . $url . '" title="' . $m['text'] . '">' . check_plain($m['text']) . '</a>' . $extra;
@@ -250,8 +272,8 @@ function filelinks_file_attributes($file) {
   $info = pathinfo($file);
   $attr = array();
   $ext = strtolower($info['extension']);
-  if( $ext == 'jpeg' ) {
-    $ext = 'jpg';
+  if( $ext == 'jpg' ) {
+    $ext = 'jpeg';
   }
 
   $attr['name'] = $info['basename'];
@@ -273,7 +295,7 @@ function filelinks_file_attributes($file) {
     return $attr;
   }
 
-  if( $ext == 'pdf' && ($c = _pdf_pagecount($f)) !== false ) {
+  if( $ext == 'pdf' && ($c = filelinks_pdf_pagecount($f)) !== false ) {
     $attr['pages'] = $c;
   }
 
@@ -281,7 +303,7 @@ function filelinks_file_attributes($file) {
     fseek($f, 6);
     $attr = array_merge($attr, unpack("vwidth/vheight", fread($f, 4)));
   }
-  elseif( $ext == 'jpg' ) {
+  elseif( $ext == 'jpeg' ) {
     fseek($f, 0);
     $attr['width'] = $attr['height'] = '???';
     while( !feof($f) ) {
@@ -315,22 +337,41 @@ function filelinks_file_attributes($file) {
   return $attr;
 }
 
-function _pdf_pagecount($f)
+function filelinks_pdf_pagecount($f)
 {
 
   fseek($f, 0);
 
-  // read a minimal number of lines
-  for($i=0;$i<5;$i++) {
-    $str = rtrim(fgets($f, 100));
-    if( preg_match("/obj <</", $str) ) {
-      foreach(explode('/', $str) as $entry) {
-        list($key,$value) = preg_split('/ +/', $entry);
-	if( strtoupper($key) == 'N' ) {
-	  return $value;
+  // Read about the first 3K worth of lines, as text (can't predict the line endings)
+  $chunk = fread($f, 3 * 1024);
+  $lines = preg_split('/[\r\n]+/m', $chunk);
+
+  /* This is a very crude parser that will probably not read some files earlier than v1.5 (Reader 6) format
+   * The basic approach here is to read the file from the top and look for the first of what appears to
+   * be an object declaration, and then in that, for what looks like a page count or end of object,
+   * and then stop.
+   * 
+   * Pdfs in practice are much more complicated than that (especially earlier revs),
+   * and the first object may not contain the page number, or may contain an "indirect reference"
+   * (don't ask!) to another record with the page number. Not to mention compressed or encoded files!
+   * So we support the basic and most recent header conventions to keep it simple, at the expense of
+   * compatibility.
+  */
+
+  $in_obj = false;
+  foreach($lines as $str) {
+	if( preg_match('/^\d+\s+\d+\s+obj/', $str) ) { // looking for something like "1 0 obj"
+	  $in_obj = true;
 	}
-      }
-    }
+
+	if( $in_obj && preg_match('|/N\s+(\d+)|', $str, $matches) ) { // looking for "/N pages"
+	  return $matches[1];
+	}
+
+	if( $in_obj && preg_match('/>>/', $str) ) {
+	  // end of object declaration: stop scanning here
+	  break;
+	}
   }
 
   return false;
