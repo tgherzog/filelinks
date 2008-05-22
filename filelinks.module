@@ -17,6 +17,88 @@ function filelinks_filter_tips($delta, $format, $long = false) {
   }
 }
 
+/**
+ * implementation of hook_menu
+ */
+
+function filelinks_menu($may_cache) {
+
+  $items = array();
+  if($may_cache) {
+    $items[] = array(
+	  'path' => 'admin/settings/filelinks',
+	  'title' => t('File Links'),
+	  'access' => user_access('administer filters'),
+	  'callback' => 'drupal_get_form',
+	  'callback arguments' => array('filelinks_admin'),
+	  'description' => t('Configure File Links input filter.'),
+    );
+  }
+
+  return $items;
+}
+
+function filelinks_admin() {
+
+  $settings = variable_get('filelinks_settings', array('show_filetype' => 1, 'show_filesize' => 1, 'show_dimensions' => 1, 'show_pagecount' => 1, 'paths' => ''));
+
+  $form['intro'] = array('#value' => '<p>' . t('Specify the configuration for !url.', array('!url' => l(t('filelinks macros'), 'admin/help/filelinks'))) . '</p>');
+
+  $form['filelinks_defaults'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Default Parameters'),
+    '#collapsible' => FALSE,
+	'#description' => t('These settings will be used for file display unless otherwise specified in the macro.'),
+	'#tree' => FALSE,
+  );
+  $form['filelinks_defaults']['show_filetype'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Show file type'),
+    '#default_value' => $settings['show_filetype'],
+	'#description' => t('Macros may override this parameter with <i>show_filetype=1|0</i>.'),
+  );
+  $form['filelinks_defaults']['show_filesize'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Show file size'),
+    '#default_value' => $settings['show_filesize'],
+	'#description' => t('Macros may override this parameter with <i>show_filesize=1|0</i>.'),
+  );
+  $form['filelinks_defaults']['show_dimensions'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Show image dimensions'),
+    '#default_value' => $settings['show_dimensions'],
+	'#description' => t('Macros may override this parameter with <i>show_dimensions=1|0</i>.'),
+  );
+  $form['filelinks_defaults']['show_pagecount'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Show page count'),
+    '#default_value' => $settings['show_pagecount'],
+	'#description' => t('Macros may override this parameter with <i>show_pagecount=1|0</i> (currently unimplemented).'),
+  );
+  $form['paths'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Search locations'),
+    '#default_value' => $settings['paths'],
+    '#description' => t('This field specifies how to search for and refer to files. Each line is its own location, and contains three parameters separated by spaces. See !help for more information.', array('!help' => l('help', 'admin/help/filelinks'))),
+	'#required' => TRUE,
+  );
+
+  $form['submit'] = array('#type' => 'submit', '#value' => t('Save configuration'));
+
+  return $form;
+}
+
+function filelinks_admin_submit($form, &$values) {
+
+  $settings = array();
+  foreach(array('show_filetype', 'show_filesize', 'show_dimensions', 'show_pagecount', 'paths') as $key) {
+    $settings[$key] = $values[$key];
+  }
+
+  variable_set('filelinks_settings', $settings);
+  drupal_set_message('Configuration has been saved.');
+}
+
 function filelinks_filter($op, $delta = 0, $format = -1, $text = '') {
   switch ($op) {
     case 'list':
@@ -28,23 +110,11 @@ function filelinks_filter($op, $delta = 0, $format = -1, $text = '') {
     case 'description':
       return t('Lets you easily add hyperlinks and descriptions to files on your website\'s server.');
 
-    case 'settings':
-      switch($delta) {
-        case 0:
-	  return _filelinks_filter_settings($format);
-	default:
-	  return;
-      }
-
     case 'process':
-      $params = array();
-      $params['show_filetype'] = variable_get("filelinks_filetype_$format", 1);
-      $params['show_filesize'] = variable_get("filelinks_filesize_$format", 1);
-      $params['show_dimensions'] = variable_get("filelinks_imgsize_$format", 1);
-      $params['show_pagecount'] = variable_get("filelinks_pagecount_$format", 1);
-      $params['paths'] = preg_split('(\r\n?|\n)', trim(variable_get("filelinks_paths_$format", '')));
-      foreach (filelinks_get_macros($text, $params) as $unexpanded_macro => $macro) {
-        $expanded_macro = filelinks_render($macro, $params);
+	  $params = variable_get('filelinks_settings', array());
+
+      foreach (filelinks_get_macros($text) as $unexpanded_macro => $macro) {
+        $expanded_macro = filelinks_render($macro);
         $text = str_replace($unexpanded_macro, $expanded_macro, $text);
       }
       return $text;
@@ -56,51 +126,6 @@ function filelinks_filter($op, $delta = 0, $format = -1, $text = '') {
     default:
       return $text;
   }
-}
-
-function _filelinks_filter_settings($format) {
-  $form['filter_filelinks'] = array(
-    '#type' => 'fieldset',
-    '#title' => t('File Links filter'),
-    '#collapsible' => TRUE,
-  );
-  $form['filter_filelinks']['filelinks_defaults'] = array(
-    '#type' => 'fieldset',
-    '#title' => t('Default parameters'),
-    '#collapsible' => FALSE,
-	'#description' => t('These settings will be used for file display unless otherwise specified in the macro.'),
-  );
-  $form['filter_filelinks']['filelinks_defaults']["filelinks_filetype_$format"] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Show file type'),
-    '#default_value' => variable_get("filelinks_filetype_$format", 1),
-	'#description' => t('Macros may override this parameter with <i>show_filetype=1|0</i>.'),
-  );
-  $form['filter_filelinks']['filelinks_defaults']["filelinks_filesize_$format"] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Show file size'),
-    '#default_value' => variable_get("filelinks_filesize_$format", 1),
-	'#description' => t('Macros may override this parameter with <i>show_filesize=1|0</i>.'),
-  );
-  $form['filter_filelinks']['filelinks_defaults']["filelinks_imgsize_$format"] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Show image dimensions'),
-    '#default_value' => variable_get("filelinks_imgsize_$format", 1),
-	'#description' => t('Macros may override this parameter with <i>show_dimensions=1|0</i>.'),
-  );
-  $form['filter_filelinks']['filelinks_defaults']["filelinks_pagecount_$format"] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Show page count'),
-    '#default_value' => variable_get("filelinks_pagecount_$format", 1),
-	'#description' => t('Macros may override this parameter with <i>show_pagecount=1|0</i>.'),
-  );
-  $form['filter_filelinks']["filelinks_paths_$format"] = array(
-    '#type' => 'textarea',
-    '#title' => t('Search locations'),
-    '#default_value' => variable_get("filelinks_paths_$format", ''),
-    '#description' => t('This field specifies how to search for and refer to files. Each line is its own location, and contains three parameters separated by spaces. See !help for more information.', array('!help' => l('help', 'admin/help/filelinks'))),
-  );
-  return $form;
 }
 
 /*
@@ -142,8 +167,11 @@ function filelinks_help($section) {
   return '';
 }
 
-function filelinks_get_macros($text, $params) {
+function filelinks_get_macros($text) {
   $m = array();
+
+  $params = variable_get('filelinks_settings', array());
+  $params['paths'] = preg_split('(\r\n?|\n)', trim($params['paths']));
 
   preg_match_all('/\[flink([^\[\]]+)*\]/i', $text, $matches);
   $tag_match = (array) array_unique($matches[1]); // Don't process duplicates.
@@ -160,6 +188,12 @@ function filelinks_get_macros($text, $params) {
       $file_name = $parts[2];
     }
 
+	if( preg_match('/(\S+)\s+(.+)/', $file_name, $parts) ) {
+	  // support for [flink file.txt click here] <=> [flink file.txt | text=click here]
+	  $file_name = $parts[1];
+	  $vars['text'] = $parts[2];
+	}
+
     foreach ($param as $p) {
       if( ($pos = strpos($p, '=')) === false ) {
 	    $vars[trim($p)] = '';
@@ -167,7 +201,9 @@ function filelinks_get_macros($text, $params) {
 	  else {
         $varname = substr($p, 0, $pos);
         $varvalue = substr($p, $pos + 1);
-        $vars[trim($varname)] = $varvalue;
+		if( ($varname = trim($varname)) ) {
+		  $vars[trim($varname)] = $varvalue;
+		}
 	  }
     }
 
@@ -183,8 +219,41 @@ function filelinks_get_macros($text, $params) {
 	  }
 	}
 
-    $vars['filename'] = $file_name;
+    $vars['filename'] = str_replace('..', '', $file_name);
     $vars['id'] = strtolower($id);
+
+	// go search for the file
+	foreach($params['paths'] as $path) {
+	  list($id,$dir,$url) = preg_split('/\s+/', $path);
+
+	  $dir = preg_replace('|/$|', '', $dir);  // no trailing slash please
+
+	  // if not start with /, make relative to configuration directory
+	  if( substr($dir,0,1) != '/' ) {
+		$dir = conf_path() . "/$dir";
+	  }
+	  elseif( ! $url ) {
+		$dir = substr($dir, 1);		// chop the leading slash: it will get added later
+	  }
+
+	  $fullpath = "$dir/$vars[filename]";
+	  if( file_exists($fullpath) && (strtolower($id) == $vars['id'] || ! $vars['id']) ) {
+	    $vars['fullpath'] = $fullpath;
+		if( $url ) {
+		  if( substr($url, -1, 1) != '/' ) {
+			$url .= '/';
+		  }
+
+		  $url .= $vars['filename'];
+		}
+		else {
+		  $url = base_path() . "$dir/" . $vars['filename'];
+		}
+
+		$vars['url'] = $url;
+		break;
+	  }
+	}
 
     // the full unaltered filter string is the key for the array of filter attributes
     $m[$current_macro] = $vars;
@@ -193,42 +262,16 @@ function filelinks_get_macros($text, $params) {
   return $m;
 }
 
-function filelinks_render($m,$params) {
+function filelinks_render($m) {
 
   $show_filetype = $m['show_filetype'];		// the default
 
-  // Go search for the file
-  foreach($params['paths'] as $path) {
-    list($id,$dir,$url) = preg_split('/\s+/', $path);
-
-	$dir = preg_replace('|/$|', '', $dir);  // no trailing slash please
-
-    // if not start with /, make relative to configuration directory
-    if( substr($dir,0,1) != '/' ) {
-      $dir = conf_path() . "/$dir";
-	}
-	elseif( ! $url ) {
-	  $dir = substr($dir, 1);		// chop the leading slash: it will get added later
-    }
-
-    $fullpath = "$dir/$m[filename]";
-    if( file_exists($fullpath) && (strtolower($id) == $m['id'] || ! $m['id']) ) {
-      $info = filelinks_file_attributes($fullpath);
+	if( $m['fullpath'] ) {
+      $info = filelinks_file_attributes($m['fullpath']);
 
       if(!isset($m['text']) ) {
         $m['text'] = $info['name'];
 		$show_filetype = false;
-      }
-
-      if( $url ) {
-        if( substr($url, -1, 1) != '/' ) {
-	      $url .= '/';
-	    }
-
-        $url .= $m['filename'];
-      }
-      else {
-        $url = base_path() . "$dir/" . $m['filename'];
       }
 
       // define extra parameters
@@ -254,10 +297,9 @@ function filelinks_render($m,$params) {
         $link .= ' filelink_' . strtolower($info['type']);
       }
 
-      $link .= '" href="' . $url . '" title="' . $m['text'] . '">' . check_plain($m['text']) . '</a>' . $extra;
+      $link .= '" href="' . $m['url'] . '" title="' . $m['text'] . '">' . $m['text'] . '</a>' . $extra;
       return $link;
     }
-  }
 
   // else, file doesn't exist, so just return its name
   if( !isset($m['text']) ) {
@@ -268,7 +310,7 @@ function filelinks_render($m,$params) {
 }
 
 function filelinks_file_attributes($file) {
-  static $types = array('doc' => 'Word', 'xls' => 'Excel', 'ppt' => 'Powerpoint');
+  static $types = array('doc' => 'Word File', 'xls' => 'Excel', 'ppt' => 'Powerpoint');
 
   $info = pathinfo($file);
   $attr = array();
@@ -347,6 +389,8 @@ function filelinks_file_attributes($file) {
 
 function filelinks_pdf_pagecount($f)
 {
+
+  return false;  // disabled
 
   fseek($f, 0);
 
