@@ -114,7 +114,7 @@ function filelinks_filter($op, $delta = 0, $format = -1, $text = '') {
 	  $params = variable_get('filelinks_settings', array());
 
       foreach (filelinks_get_macros($text) as $unexpanded_macro => $macro) {
-        $expanded_macro = filelinks_render($macro);
+        $expanded_macro = theme('filelink', $macro);
         $text = str_replace($unexpanded_macro, $expanded_macro, $text);
       }
       return $text;
@@ -170,8 +170,7 @@ function filelinks_help($section) {
 function filelinks_get_macros($text) {
   $m = array();
 
-  $params = variable_get('filelinks_settings', array());
-  $params['paths'] = preg_split('(\r\n?|\n)', trim($params['paths']));
+  $params = filelinks_settings();
 
   preg_match_all('/\[flink([^\[\]]+)*\]/i', $text, $matches);
   $tag_match = (array) array_unique($matches[1]); // Don't process duplicates.
@@ -222,39 +221,6 @@ function filelinks_get_macros($text) {
     $vars['filename'] = str_replace('..', '', $file_name);
     $vars['id'] = strtolower($id);
 
-	// go search for the file
-	foreach($params['paths'] as $path) {
-	  list($id,$dir,$url) = preg_split('/\s+/', $path);
-
-	  $dir = preg_replace('|/$|', '', $dir);  // no trailing slash please
-
-	  // if not start with /, make relative to configuration directory
-	  if( substr($dir,0,1) != '/' ) {
-		$dir = conf_path() . "/$dir";
-	  }
-	  elseif( ! $url ) {
-		$dir = substr($dir, 1);		// chop the leading slash: it will get added later
-	  }
-
-	  $fullpath = "$dir/$vars[filename]";
-	  if( file_exists($fullpath) && (strtolower($id) == $vars['id'] || ! $vars['id']) ) {
-	    $vars['fullpath'] = $fullpath;
-		if( $url ) {
-		  if( substr($url, -1, 1) != '/' ) {
-			$url .= '/';
-		  }
-
-		  $url .= $vars['filename'];
-		}
-		else {
-		  $url = base_path() . "$dir/" . $vars['filename'];
-		}
-
-		$vars['url'] = $url;
-		break;
-	  }
-	}
-
     // the full unaltered filter string is the key for the array of filter attributes
     $m[$current_macro] = $vars;
   }
@@ -262,21 +228,90 @@ function filelinks_get_macros($text) {
   return $m;
 }
 
-function filelinks_render($m) {
+function filelinks_findfile($name, $location='') {
 
-  $show_filetype = $m['show_filetype'];		// the default
+  if( ! is_array($settings) ) {
+    $settings = filelinks_settings();
+  }
 
-	if( $m['fullpath'] ) {
-      $info = filelinks_file_attributes($m['fullpath']);
+  // go search for the file
+  foreach(filelinks_settings('paths') as $path) {
+	list($id,$dir,$url) = preg_split('/\s+/', $path);
 
-      if(!isset($m['text']) ) {
-        $m['text'] = $info['name'];
-		$show_filetype = false;
-      }
+	$dir = preg_replace('|/$|', '', $dir);  // no trailing slash please
+
+	// if not start with /, make relative to configuration directory
+	if( substr($dir,0,1) != '/' ) {
+	  $dir = conf_path() . "/$dir";
+	}
+	elseif( ! $url ) {
+	  $dir = substr($dir, 1);		// Else, relative to drupal root. Chop the leading slash: it will get added later
+	}
+
+	$fullpath = "$dir/$name";
+	if( file_exists($fullpath) && (strtolower($id) == $location || ! $location) ) {
+	  if( $url ) {
+		if( substr($url, -1, 1) != '/' ) {
+		  $url .= '/';
+		}
+
+		$url .= $name;
+	  }
+	  else {
+		$url = base_path() . "$dir/" . $name;
+	  }
+
+	  return array('path' => $fullpath, 'url' => $url);
+	}
+  }
+
+  return array();
+}
+
+function filelinks_settings($key=null) {
+  static $settings = null;
+
+  if( ! is_array($settings) ) {
+	$settings = variable_get('filelinks_settings', array());
+	$settings['paths'] = preg_split('(\r\n?|\n)', trim($settings['paths']));
+  }
+
+  return $key ? $settings[$key] : $settings;
+}
+
+/*
+ * theme_filelink: returns a hyperlink to a file, given the following array:
+ * 'filename' => either an absolute url, or a path to a file relative to one of the directories specified in settings
+ # 'id' => specifier for a specific directory (optional)
+ * 'text' => text of link (otherwise, use filename)
+ * 'description' => descriptive text, shown along with attributes after the link
+ * 'show_filetype' => whether to show file's type/extension in information description, true or false
+ * 'show_dimensions' => whether to show image dimensions
+ * 'show_pagecount'  => whether to show pdf page count (unimplemented)
+ * 'show_filesize'   => whether to show file size
+ * 'show_all'        => all attributes showing
+ * 'show_none'       => no attributes showing
+ */
+function theme_filelink($m) {
+
+  $m = filelinks_check($m);
+  $info = $m['attributes'];
+  if(!isset($m['text']) ) {
+	// if no text, use the file name and don't show the file type
+	$m['text'] = $m['filename'];
+	if( strtoupper($m['type']) == $m['type_'] ) {
+	  // showing the file type would be redundant
+	  $m['show_filetype'] = false;
+	}
+  }
+
+  if( ! $m['url'] ) {
+    return check_plain($m['text']);
+  }
 
       // define extra parameters
       $more = array();
-      if( $show_filetype && isset($info['type_']) )
+      if( $m['show_filetype'] && isset($info['type_']) )
         $more[] = $info['type_'];
       if( $m['show_filesize'] && isset($info['size_']) )
         $more[] = $info['size_'];
@@ -299,34 +334,66 @@ function filelinks_render($m) {
 
       $link .= '" href="' . $m['url'] . '" title="' . $m['text'] . '">' . $m['text'] . '</a>' . $extra;
       return $link;
-    }
-
-  // else, file doesn't exist, so just return its name
-  if( !isset($m['text']) ) {
-    $m['text'] = basename($m['filename']);
-  }
-
-  return check_plain($m['text']);
 }
 
-function filelinks_file_attributes($file) {
+function filelinks_check($macro) {
   static $types = array('doc' => 'Word File', 'xls' => 'Excel', 'ppt' => 'Powerpoint');
+  static $show_keys = array('show_filetype', 'show_filesize', 'show_dimensions', 'show_pagecount');
 
-  $info = pathinfo($file);
-  $attr = array();
+  foreach($show_keys as $key) {
+    if( ! isset($macro[$key]) ) {
+	  if( $macro['show_all'] ) {
+	    $macro[$key] = true;
+	  }
+	  elseif( $macro['show_none'] ) {
+	    $macro[$key] = false;
+	  }
+	  else {
+	    $macro[$key] = filelinks_settings($key);
+	  }
+	}
+  }
+
+  if( preg_match('#^\w+://#', $macro['filename']) ) {
+    // this looks like a well-formed url
+	$macro['url'] = $macro['filename'];
+	unset($macro['path']);
+
+	$parts = parse_url($macro['filename']);
+	$info = pathinfo($parts['path']);
+  }
+  else {
+    // this is a local file
+	$macro = array_merge($macro, filelinks_findfile($macro['filename'], $macro['id'])); // find path and url
+	$info = pathinfo($macro['path']);
+  }
+
+  // at a minimum, do the extension
+  $macro['attributes'] = array();
   $ext = strtolower($info['extension']);
   if( $ext == 'jpg' ) {
     $ext = 'jpeg';
   }
 
-  $attr['name'] = $info['basename'];
-  $attr['type'] = $ext;
+  $macro['attributes']['name'] = $info['basename'];
+  $macro['attributes']['type'] = $ext;
   if( $types[$ext] ) {
-    $attr['type_'] = $types[$ext];
+    $macro['attributes']['type_'] = $types[$ext];
   }
   else {
-    $attr['type_'] = strtoupper($attr['type']);
+    $macro['attributes']['type_'] = strtoupper($macro['attributes']['type']);
   }
+
+  if( $macro['path'] ) {
+    $macro['attributes'] = array_merge($macro['attributes'], filelinks_file_attributes($macro['path']));
+  }
+
+  return $macro;
+}
+
+function filelinks_file_attributes($file) {
+
+  $attr = array();
 
   if( ($sz = @filesize($file)) === false )
     return $attr;
