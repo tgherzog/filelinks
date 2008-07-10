@@ -292,7 +292,12 @@ function filelinks_settings($key=null) {
  * 'show_all'        => all attributes showing
  * 'show_none'       => no attributes showing
  */
-function theme_filelink($m) {
+function theme_filelink($m, $text='') {
+
+  if( ! is_array($m) ) {
+	// also accept filename, text as arguments in place of full array
+    $m = array('filename' => $m, 'text' => $text);
+  }
 
   $m = filelinks_check($m);
   $info = $m['attributes'];
