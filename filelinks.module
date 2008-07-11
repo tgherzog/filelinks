@@ -316,6 +316,8 @@ function theme_filelink($m, $text='') {
 
       // define extra parameters
       $more = array();
+      if( $m['description'] )
+        $more[] = check_plain($m['description']);
       if( $m['show_filetype'] && isset($info['type_']) )
         $more[] = $info['type_'];
       if( $m['show_filesize'] && isset($info['size_']) )
@@ -324,9 +326,6 @@ function theme_filelink($m, $text='') {
         $more[] = "$info[width]&nbsp;x&nbsp;$info[height]&nbsp;px";
       if( $m['show_pagecount'] && isset($info['pages']) )
 		$more[] = format_plural($info['pages'], '1&nbsp;page', '@count&nbsp;pages');
-      if( $m['description'] ) {
-        $more[] = check_plain($m['description']);
-      }
 
       if( count($more) ) {
         $extra = ' <span class="filelink_description">(' . implode(', ', $more) . ')</span>';
