@@ -40,7 +40,7 @@ function filelinks_menu($may_cache) {
 
 function filelinks_admin() {
 
-  $settings = variable_get('filelinks_settings', array('show_filetype' => 1, 'show_filesize' => 1, 'show_dimensions' => 1, 'show_pagecount' => 1, 'paths' => ''));
+  $settings = variable_get('filelinks_settings', array('show_filetype' => 1, 'show_filesize' => 1, 'show_dimensions' => 1, 'show_pagecount' => 1, 'paths' => '', 'pdfinfo' => '/usr/local/bin/pdfinfo'));
 
   $form['intro'] = array('#value' => '<p>' . t('Specify the configuration for !url.', array('!url' => l(t('filelinks macros'), 'admin/help/filelinks'))) . '</p>');
 
@@ -69,12 +69,29 @@ function filelinks_admin() {
     '#default_value' => $settings['show_dimensions'],
 	'#description' => t('Macros may override this parameter with <i>show_dimensions=1|0</i>.'),
   );
+  
   $form['filelinks_defaults']['show_pagecount'] = array(
     '#type' => 'checkbox',
     '#title' => t('Show page count'),
     '#default_value' => $settings['show_pagecount'],
-	'#description' => t('Macros may override this parameter with <i>show_pagecount=1|0</i> (currently unimplemented).'),
+	'#description' => t('Macros may override this parameter with <i>show_pagecount=1|0</i>.'),
   );
+
+  if( $settings['pdfinfo'] && ! file_exists($settings['pdfinfo']) ) {
+    $status .= '<b>' . t('This path is invalid.') . '</b>';
+  }
+  else {
+    $status = '';
+  }
+
+  $form['pdfinfo'] = array(
+    '#type' => 'textfield',
+	'#title' => t('Path to pdfinfo'),
+	'#default_value' => $settings['pdfinfo'],
+	'#description' => t('The system path to the !link program used to retrieve PDF document information. This path must be valid for filelinks to add page counts. !status',
+	   array('!link' => l('pdfinfo', 'http://linuxcommand.org/man_pages/pdfinfo1.html'), '!status' => $status)),
+  );
+
   $form['paths'] = array(
     '#type' => 'textarea',
     '#title' => t('Search locations'),
@@ -91,7 +108,7 @@ function filelinks_admin() {
 function filelinks_admin_submit($form, &$values) {
 
   $settings = array();
-  foreach(array('show_filetype', 'show_filesize', 'show_dimensions', 'show_pagecount', 'paths') as $key) {
+  foreach(array('show_filetype', 'show_filesize', 'show_dimensions', 'show_pagecount', 'paths', 'pdfinfo') as $key) {
     $settings[$key] = $values[$key];
   }
 
@@ -229,10 +246,7 @@ function filelinks_get_macros($text) {
 }
 
 function filelinks_findfile($name, $location='') {
-
-  if( ! is_array($settings) ) {
-    $settings = filelinks_settings();
-  }
+  $settings = filelinks_settings();
 
   // go search for the file
   foreach(filelinks_settings('paths') as $path) {
@@ -399,6 +413,8 @@ function filelinks_file_attributes($file) {
 
   $attr = array();
 
+  $info = pathinfo($file);
+  $ext  = strtolower($info['extension']);
   if( ($sz = @filesize($file)) === false )
     return $attr;
 
@@ -412,12 +428,16 @@ function filelinks_file_attributes($file) {
   else
     $attr['size_'] = number_format($sz, 0) . '&nbsp;bytes';
 
-  if( !($f = fopen($file, 'r')) ) {
-    return $attr;
+  if( $ext == 'pdf' ) {
+    if( ($c = filelinks_pdf_pagecount($file)) !== false ) {
+	  $attr['pages'] = $c;
+	}
+
+	return $attr;
   }
 
-  if( $ext == 'pdf' && ($c = filelinks_pdf_pagecount($f)) !== false ) {
-    $attr['pages'] = $c;
+  if( !($f = fopen($file, 'r')) ) {
+    return $attr;
   }
 
   if( $ext == 'gif' ) {
@@ -461,39 +481,14 @@ function filelinks_file_attributes($file) {
 function filelinks_pdf_pagecount($f)
 {
 
-  return false;  // disabled
+  if( ! ($path = filelinks_settings('pdfinfo')) ) {
+    return false;
+  }
 
-  fseek($f, 0);
-
-  // Read about the first 3K worth of lines, as text (can't predict the line endings)
-  $chunk = fread($f, 3 * 1024);
-  $lines = preg_split('/[\r\n]+/m', $chunk);
-
-  /* This is a very crude parser that will probably not read some files earlier than v1.5 (Reader 6) format
-   * The basic approach here is to read the file from the top and look for the first of what appears to
-   * be an object declaration, and then in that, for what looks like a page count or end of object,
-   * and then stop.
-   * 
-   * Pdfs in practice are much more complicated than that (especially earlier revs),
-   * and the first object may not contain the page number, or may contain an "indirect reference"
-   * (don't ask!) to another record with the page number. Not to mention compressed or encoded files!
-   * So we support the basic and most recent header conventions to keep it simple, at the expense of
-   * compatibility.
-  */
-
-  $in_obj = false;
-  foreach($lines as $str) {
-	if( preg_match('/^\d+\s+\d+\s+obj/', $str) ) { // looking for something like "1 0 obj"
-	  $in_obj = true;
-	}
-
-	if( $in_obj && preg_match('|/N\s+(\d+)|', $str, $matches) ) { // looking for "/N pages"
+  exec(escapeshellcmd($path) . ' ' . escapeshellarg($f), $result);
+  foreach($result as $line) {
+    if( preg_match('#^Pages:\s+(\d+)#i', $line, $matches) ) {
 	  return $matches[1];
-	}
-
-	if( $in_obj && preg_match('/>>/', $str) ) {
-	  // end of object declaration: stop scanning here
-	  break;
 	}
   }
 
