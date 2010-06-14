@@ -40,7 +40,7 @@ function filelinks_menu($may_cache) {
 
 function filelinks_admin() {
 
-  $settings = variable_get('filelinks_settings', array('show_filetype' => 1, 'show_filesize' => 1, 'show_dimensions' => 1, 'show_pagecount' => 1, 'paths' => '', 'pdfinfo' => '/usr/local/bin/pdfinfo'));
+  $settings = variable_get('filelinks_settings', array('show_filetype' => 1, 'show_filesize' => 1, 'show_dimensions' => 1, 'show_pagecount' => 1, 'show_playlength' => 1, 'paths' => '', 'pdfinfo' => '/usr/local/bin/pdfinfo'));
 
   $form['intro'] = array('#value' => '<p>' . t('Specify the configuration for !url.', array('!url' => l(t('filelinks macros'), 'admin/help/filelinks'))) . '</p>');
 
@@ -72,9 +72,16 @@ function filelinks_admin() {
   
   $form['filelinks_defaults']['show_pagecount'] = array(
     '#type' => 'checkbox',
-    '#title' => t('Show page count'),
+    '#title' => t('Show page count (pdfs)'),
     '#default_value' => $settings['show_pagecount'],
 	'#description' => t('Macros may override this parameter with <i>show_pagecount=1|0</i>.'),
+  );
+
+  $form['filelinks_defaults']['show_playlength'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Show play length (mp3s)'),
+    '#default_value' => $settings['show_playlength'],
+	'#description' => t('Macros may override this parameter with <i>show_playlength=1|0</i>.'),
   );
 
   if( $settings['pdfinfo'] && ! file_exists($settings['pdfinfo']) ) {
@@ -108,7 +115,7 @@ function filelinks_admin() {
 function filelinks_admin_submit($form, &$values) {
 
   $settings = array();
-  foreach(array('show_filetype', 'show_filesize', 'show_dimensions', 'show_pagecount', 'paths', 'pdfinfo') as $key) {
+  foreach(array('show_filetype', 'show_filesize', 'show_dimensions', 'show_pagecount', 'show_playlength', 'paths', 'pdfinfo') as $key) {
     $settings[$key] = $values[$key];
   }
 
@@ -176,7 +183,8 @@ function filelinks_help($section) {
 		'<b>description</b> = descriptive text (included with file statistics)',
 		'<b>show_filesize</b> = [1|0] (overrides default settings)',
 		'<b>show_dimensions</b> = [1|0] (shows image dimensions&mdash;overrides default settings)',
-		'<b>show_pagecount</b> = [1|0] (number of pages in pdf;&mdash;overrides default settings)'));
+		'<b>show_pagecount</b> = [1|0] (number of pages in pdf;&mdash;overrides default settings)',
+		'<b>show_playlength</b> = [1|0] (audio length;&mdash;overrides default settings)'));
 
 	  return $text;
   }
@@ -223,7 +231,7 @@ function filelinks_get_macros($text) {
 	  }
     }
 
-	foreach(array('show_filesize', 'show_dimensions', 'show_pagecount','show_filetype') as $p ) {
+	foreach(array('show_filesize', 'show_dimensions', 'show_pagecount','show_playlength','show_filetype') as $p ) {
 	  if( isset($vars['show_all']) ) {
 	    $vars[$p] = 1;
 	  }
@@ -301,7 +309,8 @@ function filelinks_settings($key=null) {
  * 'description' => descriptive text, shown along with attributes after the link
  * 'show_filetype' => whether to show file's type/extension in information description, true or false
  * 'show_dimensions' => whether to show image dimensions
- * 'show_pagecount'  => whether to show pdf page count (unimplemented)
+ * 'show_pagecount'  => whether to show pdf page count
+ * 'show_playlength'  => whether to show audio length
  * 'show_filesize'   => whether to show file size
  * 'show_all'        => all attributes showing
  * 'show_none'       => no attributes showing
@@ -334,12 +343,22 @@ function theme_filelink($m, $text='') {
         $more[] = check_plain($m['description']);
       if( $m['show_filetype'] && isset($info['type_']) )
         $more[] = $info['type_'];
-      if( $m['show_filesize'] && isset($info['size_']) )
-        $more[] = $info['size_'];
       if( $m['show_dimensions'] && isset($info['width']) && isset($info['height']) )
         $more[] = "$info[width]&nbsp;x&nbsp;$info[height]&nbsp;px";
       if( $m['show_pagecount'] && isset($info['pages']) )
 		$more[] = format_plural($info['pages'], '1&nbsp;page', '@count&nbsp;pages');
+      if( $m['show_playlength'] && isset($info['playlength']) ) {
+	    $mins = (int) ($info['playlength'] / 60);
+		$secs = $info['playlength'] % 60;
+		if( $mins > 60 ) {
+		  $more[] = sprintf('%d:%2d:%2d', $mins/60, $mins%60, $secs);
+		}
+		else {
+		  $more[] = sprintf('%d:%2d', $mins%60, $secs);
+		}
+	  }
+      if( $m['show_filesize'] && isset($info['size_']) )
+        $more[] = $info['size_'];
 
       if( count($more) ) {
         $extra = ' <span class="filelink_description">(' . implode(', ', $more) . ')</span>';
@@ -355,7 +374,7 @@ function theme_filelink($m, $text='') {
 }
 
 function filelinks_check($macro) {
-  static $types = array('doc' => 'Word File', 'xls' => 'Excel', 'ppt' => 'Powerpoint', 'rm' => 'Real Player', 'ram' => 'Real Player');
+  static $types = array('doc' => 'Word File', 'xls' => 'Excel', 'ppt' => 'Powerpoint', 'rm' => 'Real Player', 'ram' => 'Real Player', 'zip' => 'ZIP archive');
   static $show_keys = array('show_filetype', 'show_filesize', 'show_dimensions', 'show_pagecount');
 
   foreach($show_keys as $key) {
@@ -436,6 +455,12 @@ function filelinks_file_attributes($file) {
 	return $attr;
   }
 
+  if( $ext == 'mp3' ) {
+    if( ($c = filelinks_mp3_playlength($file)) !== false ) {
+	  $attr['playlength'] = $c;
+	}
+  }
+
   if( !($f = fopen($file, 'r')) ) {
     return $attr;
   }
@@ -493,4 +518,100 @@ function filelinks_pdf_pagecount($f)
   }
 
   return false;
+}
+
+/* filelinks_mp3_playlength: returns estimated length of an mp3 file in seconds.
+   Adapted and stripped down from a perl module, see:
+
+   http://www.cpan.org/modules/by-module/MP3
+*/
+
+function filelinks_mp3_playlength($path) {
+  static $bitrates = array(
+	1 => array(
+	  /* Layer III */ 1 => array(0, 32, 40, 48,  56,  64,  80,  96, 112, 128, 160, 192, 224, 256, 320),
+	  /* Layer II */  2 => array(0, 32, 48, 56,  64,  80,  96, 112, 128, 160, 192, 224, 256, 320, 384),
+      /* Layer I */   3 => array(0, 32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448),
+	),
+	0 => array(
+	  /* Layer III */ 1 => array(0,  8, 16, 24,  32,  40,  48,  56,  64,  80,  96, 112, 128, 144, 160), // same as layer II
+	  /* Layer II */  2 => array(0,  8, 16, 24,  32,  40,  48,  56,  64,  80,  96, 112, 128, 144, 160),
+	  /* Layer I */   3 => array(0, 32, 48, 56,  64,  80,  96, 112, 128, 144, 160, 176, 192, 224, 256),
+	),
+  );
+
+  static $freqrates = array(
+    /* mpeg1 */   3  => array(44100, 48000, 32000),
+	/* mpeg2 */   2  => array(22050, 24000, 16000),
+	/* mpeg2.5 */ 0 => array(11025, 12000,  8000),
+  );
+
+  if( ! ($fh = fopen($path, 'rb')) ) {
+    return false;
+  }
+
+  # find end of stream: EOF, possibly less 128 bytes
+  fseek($fh, 0, SEEK_END);
+  $end = ftell($fh);
+  fseek($fh, -128, SEEK_END);
+  if( ($buf = fread($fh, 3)) === FALSE ) {
+	fclose($fh);
+    return false;
+  }
+
+  if( $buf == 'TAG' ) {
+    $end -= 128;
+  }
+
+  # go to beginning, find the first legitimate tag
+  fseek($fh, 0);
+  $buf = fread($fh, min($end, 8192));
+  $len = strlen($buf);
+  for($i=0;$i<$len;$i++) {
+	if( ord(substr($buf, $i, 1)) == 0xFF ) {
+	  list($h) = array_values(unpack('N', substr($buf, $i, 4)));
+	  $hdr = array('value' => $h,
+	    'framesync' => ($h>>21),
+		'id' => ($h>>19) & 3, 			// mpeg audio version ID (if & 1, v1, else v2)
+		'layer' => ($h>>17) & 3,		// layer description: 1: III, 2: II, 3: I
+		'protect' => ($h>>16) & 1,		// 1 if unprotected
+		'bitidx' => ($h>>12) & 15,		// bit rate index: use id and layer to lookup
+		'sampidx' => ($h>>10) & 3,		// sampling frequency index: use id to lookup
+		'padbit'   => ($h>>9) & 1,		// pad bit
+		'channel' => ($h>>6) & 3,		// channel (mono, stereo)
+		'mode_ext' => ($h>>4) & 3,		// channel mode extension
+		'copy'    => ($h>>3) & 1,		// 1: copyrighted
+		'orig'    => ($h>>2) & 1,		// 1: original (not duplicate)
+		'emphasis' => ($h) & 3,			// emphasis
+	  );
+
+	  $hdr['bitrate'] = $bitrates[$hdr['id'] & 1][$hdr['layer']][$hdr['bitidx']];
+	  $hdr['samplefreq'] = $freqrates[$hdr['id']][$hdr['sampidx']];
+
+	  # sanity check. Is this a valid header?
+	  if( $hdr['framesync'] == -1 &&		// must be all bits on
+		$hdr['id'] != 1 && // reserved
+		$hdr['bitidx'] != 0 && $hdr['bitidx'] != 15 && // reserved or bogus
+		$hdr['sampidx'] != 3 &&	 // reserved
+		$hdr['bitrate'] && $hdr['samplefreq'] &&
+		$hdr['layer'] != 0 && 		// reserved
+		$hdr['emphasis'] != 2 &&	// not sure what this means
+		( ($hdr['id']&1)!=1 || $hdr['layer']!=3 || $hdr['protect']!= 1) // in v1, layer I is not allowed to be unprotected(?)
+		) break;
+	}
+  }
+
+  if( $i == $len ) {
+    fclose($fh);
+	return false;
+  }
+
+  /* Note that in the rare case that this is a variable bitrate file, we are not
+     actually yet at the start of the data stream, we may be short by as much as 152
+	 bytes. This is just lazy, but since we only are estimating the playlength we
+	 don't care. Even at low bitrates, 152 bytes means we're only off 4/100ths of a
+	 second, so it's not worth the extra code.
+  */
+
+  return round((($end-$i) * 8 / $hdr['bitrate']/10) / 100);
 }
