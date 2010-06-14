@@ -212,7 +212,7 @@ function filelinks_get_macros($text) {
       $file_name = $parts[2];
     }
 
-	if( preg_match('/(\S+)\s+(.+)/', $file_name, $parts) ) {
+	if( preg_match('/(\S+)\s+(.+)/', $file_name, $parts) && count($param) == 0) {
 	  // support for [flink file.txt click here] <=> [flink file.txt | text=click here]
 	  $file_name = $parts[1];
 	  $vars['text'] = $parts[2];
@@ -334,7 +334,7 @@ function theme_filelink($m, $text='') {
   }
 
   if( ! $m['url'] ) {
-    return check_plain($m['text']);
+    return '<span class="filelink_description" title="' . check_plain($m['filename']) . '">' . check_plain($m['text']) . '</span>';
   }
 
       // define extra parameters
