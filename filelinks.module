@@ -17,119 +17,41 @@ function filelinks_filter_tips($delta, $format, $long = false) {
   }
 }
 
+/** 
+ * Implementation of hook_theme()
+ */
+
+function filelinks_theme() {
+  return array(
+    'filelink' => array('arguments' => array('macro' => null, 'text' => '')),
+	'filelinks_admin' => array('arguments' => array('form' => null), 'file' => 'filelinks.admin.inc'),
+  );
+}
+
 /**
  * implementation of hook_menu
  */
 
-function filelinks_menu($may_cache) {
+function filelinks_menu() {
 
-  $items = array();
-  if($may_cache) {
-    $items[] = array(
-	  'path' => 'admin/settings/filelinks',
-	  'title' => t('File Links'),
-	  'access' => user_access('administer filters'),
-	  'callback' => 'drupal_get_form',
-	  'callback arguments' => array('filelinks_admin'),
-	  'description' => t('Configure File Links input filter.'),
-    );
-  }
+  $items = array(
+    'admin/settings/filelinks' => array(
+	  'title' => 'File Links',
+	  'description' => 'Configure File LInks input filter',
+	  'page callback' => 'drupal_get_form',
+	  'page arguments' => array('filelinks_admin'),
+	  'access arguments' => array('administer filters'),
+	  'file' => 'filelinks.admin.inc',
+	),
+  );
 
   return $items;
 }
 
-function filelinks_admin() {
-
-  $settings = variable_get('filelinks_settings', array('show_filetype' => 1, 'show_filesize' => 1, 'show_dimensions' => 1, 'show_pagecount' => 1, 'show_playlength' => 1, 'paths' => '', 'pdfinfo' => '/usr/local/bin/pdfinfo'));
-
-  $form['intro'] = array('#value' => '<p>' . t('Specify the configuration for !url.', array('!url' => l(t('filelinks macros'), 'admin/help/filelinks'))) . '</p>');
-
-  $form['filelinks_defaults'] = array(
-    '#type' => 'fieldset',
-    '#title' => t('Default Parameters'),
-    '#collapsible' => FALSE,
-	'#description' => t('These settings will be used for file display unless otherwise specified in the macro.'),
-	'#tree' => FALSE,
-  );
-  $form['filelinks_defaults']['show_filetype'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Show file type'),
-    '#default_value' => $settings['show_filetype'],
-	'#description' => t('Macros may override this parameter with <i>show_filetype=1|0</i>.'),
-  );
-  $form['filelinks_defaults']['show_filesize'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Show file size'),
-    '#default_value' => $settings['show_filesize'],
-	'#description' => t('Macros may override this parameter with <i>show_filesize=1|0</i>.'),
-  );
-  $form['filelinks_defaults']['show_dimensions'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Show image dimensions'),
-    '#default_value' => $settings['show_dimensions'],
-	'#description' => t('Macros may override this parameter with <i>show_dimensions=1|0</i>.'),
-  );
-  
-  $form['filelinks_defaults']['show_pagecount'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Show page count (pdfs)'),
-    '#default_value' => $settings['show_pagecount'],
-	'#description' => t('Macros may override this parameter with <i>show_pagecount=1|0</i>.'),
-  );
-
-  $form['filelinks_defaults']['show_playlength'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Show play length (mp3s)'),
-    '#default_value' => $settings['show_playlength'],
-	'#description' => t('Macros may override this parameter with <i>show_playlength=1|0</i>.'),
-  );
-
-  if( $settings['pdfinfo'] && ! file_exists($settings['pdfinfo']) ) {
-    $status .= '<b>' . t('This path is invalid.') . '</b>';
-  }
-  else {
-    $status = '';
-  }
-
-  $form['pdfinfo'] = array(
-    '#type' => 'textfield',
-	'#title' => t('Path to pdfinfo'),
-	'#default_value' => $settings['pdfinfo'],
-	'#description' => t('The system path to the !link program used to retrieve PDF document information. This path must be valid for filelinks to add page counts. !status',
-	   array('!link' => l('pdfinfo', 'http://linuxcommand.org/man_pages/pdfinfo1.html'), '!status' => $status)),
-  );
-
-  $form['paths'] = array(
-    '#type' => 'textarea',
-    '#title' => t('Search locations'),
-    '#default_value' => $settings['paths'],
-    '#description' => t('This field specifies how to search for and refer to files. Each line is its own location, and contains three parameters separated by spaces. See !help for more information.', array('!help' => l('help', 'admin/help/filelinks'))),
-	'#required' => TRUE,
-  );
-
-  $form['submit'] = array('#type' => 'submit', '#value' => t('Save configuration'));
-
-  return $form;
-}
-
-function filelinks_admin_submit($form, &$values) {
-
-  $settings = array();
-  foreach(array('show_filetype', 'show_filesize', 'show_dimensions', 'show_pagecount', 'show_playlength', 'paths', 'pdfinfo') as $key) {
-    $settings[$key] = $values[$key];
-  }
-
-  variable_set('filelinks_settings', $settings);
-  drupal_set_message('Configuration has been saved.');
-}
-
-function filelinks_filter($op, $delta = 0, $format = -1, $text = '') {
+function filelinks_filter($op, $delta = 0, $format = -1, $text = '', $cache_id=0) {
   switch ($op) {
     case 'list':
       return (array(0 => t('File Links filter')));
-
-    case 'name':
-      return t('File Link filter');
 
     case 'description':
       return t('Lets you easily add hyperlinks and descriptions to files on your website\'s server.');
@@ -143,10 +65,6 @@ function filelinks_filter($op, $delta = 0, $format = -1, $text = '') {
       }
       return $text;
 
-    case 'no cache':
-      // return TRUE;
-	  return ! variable_get('cache', 0);
-
     default:
       return $text;
   }
@@ -156,7 +74,7 @@ function filelinks_filter($op, $delta = 0, $format = -1, $text = '') {
  * implementation of hook_help
  */
 
-function filelinks_help($section) {
+function filelinks_help($section, $arg) {
 
   switch($section) {
     case 'admin/modules#filelinks':
@@ -165,17 +83,14 @@ function filelinks_help($section) {
     case 'admin/help#filelinks':
 	  $text = '<p>' . t('The filelinks module adds a filter that lets you quickly add informative hyperlinks to files on your website\'s server via macros. For example:') . '</p><p>[flink&nbsp;filename.pdf|text=My&nbsp;PDF]</p>';
 	  $text .= '<p>' . t('can automatically become:') . '</p><p>' . htmlspecialchars('<a href="http://pdf.company.org/downloads/filename.pdf">My PDF</a> (2.3 Mb, 98 pages)') . '</p>';
-	  $text .= '<p>' . t('Macros are in the form <b>[flink(_tag) filename (parameters)]</b>. The parenthetical parts are optional. Parameters are each preceded by "|". You configure the filter to look at one or more directories to find files. The "_tag" part lets you specify which directory to look in. If you omit the tag, the filter looks at all directories in order until it finds the specified file.') . '</p>';
+	  $text .= '<p>' . t('Macros are in the form <b>[flink(_tag) filename (parameters)]</b>. The parenthetical parts are optional. Parameters are each preceded by "|". You configure the filter to look at one or more directories to find files. The "_tag" part lets you specify which directory to look in. If you omit the tag, the filter looks at all search paths in order until it finds the specified file.') . '</p>';
 	  $text .= '<h3>' . t('Configuration') . '</h3>';
-	  $text .= '<p>' . t('You must specify "search locations" in which the filter will look for files referenced in the macros. Each location is a directory reference, one per line, with three fields each: tag directory url (url is optional). ') . '</p>';
+	  $text .= '<p>' . t('You must specify "search paths" in which the filter will look for files referenced in the macros.') . '</p>';
 
 	  $text .= theme('item_list',
-	    array(t('<b>tag:</b> identifies the directory to the macro.'),
-		  array('data' => t('<b>directory:</b> a unix-style path: path/to/directory'),
-		    'children' => array(t('If the path starts with "/" and there is no url parameter, then the path is relative to drupal\'s root directory.'),
-			  t('If the path starts with "/" and there is a url parameter, then the path is an <i>absolute</i> path on the server, somewhere in the DocumentRoot for that domain. So pay attention to security.'),
-			  t('If the path does not start with "/" it is relative to the site configuration directory.'))),
-		  t('<b>url:</b> you can create links to files in other domains so long as they are hosted by the same server as your drupal site. If you include a url it is prepended to the file name in the link.')));
+	    array(t('<b>tag:</b> identifies the directory to the macro. It is required, and should be unique.'),
+		t('<b>file system path:</b> a unix-style path: path/to/directory, relative to your Drupal root directory. It can be blank, in which case it the search path is the Drupal root. If the path begins with "/" then it is considered an absolute system path.'),
+		  t('<b>url:</b> you can create links to files in other domains so long as they are hosted by the same server as your Drupal site. If you include a url it is prepended to the file name in the link. If the path is an absolute system path and url is empty, then the url to the Drupal root directory is assumed.')));
 
 	  $text .= '<h3>' . t('Parameters') . '</h3>';
 	  $text .= theme('item_list',
@@ -257,30 +172,23 @@ function filelinks_findfile($name, $location='') {
   $settings = filelinks_settings();
 
   // go search for the file
-  foreach(filelinks_settings('paths') as $path) {
-	list($id,$dir,$url) = preg_split('/\s+/', $path);
+  foreach($settings['paths'] as $path) {
+	list($id,$dir,$url) = array($path['tag'], $path['path'], $path['url']);
 
 	$dir = preg_replace('|/$|', '', $dir);  // no trailing slash please
+	$url = preg_replace('|/$|', '', $url);  // no trailing slash please
 
-	// if not start with /, make relative to configuration directory
-	if( substr($dir,0,1) != '/' ) {
-	  $dir = conf_path() . "/$dir";
-	}
-	elseif( ! $url ) {
-	  $dir = substr($dir, 1);		// Else, relative to drupal root. Chop the leading slash: it will get added later
-	}
-
-	$fullpath = "$dir/$name";
+	$fullpath = ($dir ? "$dir/" : $dir) . $name;
 	if( file_exists($fullpath) && (strtolower($id) == $location || ! $location) ) {
 	  if( $url ) {
-		if( substr($url, -1, 1) != '/' ) {
-		  $url .= '/';
-		}
-
-		$url .= $name;
+		$url = $url . '/' . $name;
+	  }
+	  elseif( substr($dir, 0, 1) == '/' && ! $url ) {
+	    global $base_url;
+		$url = $base_url . '/' . $name;
 	  }
 	  else {
-		$url = base_path() . "$dir/" . $name;
+		$url = base_path() . $fullpath;
 	  }
 
 	  return array('path' => $fullpath, 'url' => $url);
@@ -294,8 +202,7 @@ function filelinks_settings($key=null) {
   static $settings = null;
 
   if( ! is_array($settings) ) {
-	$settings = variable_get('filelinks_settings', array());
-	$settings['paths'] = preg_split('(\r\n?|\n)', trim($settings['paths']));
+	$settings = variable_get('filelinks_settings', array('paths' => array()));
   }
 
   return $key ? $settings[$key] : $settings;
@@ -315,8 +222,9 @@ function filelinks_settings($key=null) {
  * 'show_all'        => all attributes showing
  * 'show_none'       => no attributes showing
  */
-function theme_filelink($m, $text='') {
+function theme_filelink($macro, $text='') {
 
+  $m = $macro;
   if( ! is_array($m) ) {
 	// also accept filename, text as arguments in place of full array
     $m = array('filename' => $m, 'text' => $text);
