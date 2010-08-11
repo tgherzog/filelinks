@@ -282,7 +282,12 @@ function theme_filelink($macro, $text='') {
 }
 
 function filelinks_check($macro) {
-  static $types = array('doc' => 'Word File', 'xls' => 'Excel', 'ppt' => 'Powerpoint', 'rm' => 'Real Player', 'ram' => 'Real Player', 'zip' => 'ZIP archive');
+  static $types = array(
+    'doc' => 'Word File', 'docx' => 'Word File',
+    'xls' => 'Excel', 'xlsx' => 'Excel',
+    'ppt' => 'Powerpoint', 'pptx' => 'Powerpoint',
+    'rm' => 'Real Player', 'ram' => 'Real Player',
+    'zip' => 'ZIP archive');
   static $show_keys = array('show_filetype', 'show_filesize', 'show_dimensions', 'show_pagecount');
 
   foreach($show_keys as $key) {
