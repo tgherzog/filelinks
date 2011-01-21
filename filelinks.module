@@ -403,10 +403,10 @@ function theme_filelink($macro, $text='') {
 	    $mins = (int) ($info['playlength'] / 60);
 		$secs = $info['playlength'] % 60;
 		if( $mins > 60 ) {
-		  $more[] = sprintf('%d:%2d:%2d', $mins/60, $mins%60, $secs);
+		  $more[] = sprintf('%d:%02d:%02d', $mins/60, $mins%60, $secs);
 		}
 		else {
-		  $more[] = sprintf('%d:%2d', $mins%60, $secs);
+		  $more[] = sprintf('%d:%02d', $mins%60, $secs);
 		}
 	  }
       if( $m['show_filesize'] && isset($info['size_']) )
@@ -432,7 +432,14 @@ function filelinks_check($macro) {
 	'ppt' => 'Powerpoint', 'pptx' => 'Powerpoint',
 	'rm' => 'Real Player', 'ram' => 'Real Player',
 	'zip' => 'ZIP archive');
-  static $show_keys = array('show_filetype', 'show_filesize', 'show_dimensions', 'show_pagecount');
+  static $show_keys = array('show_filetype', 'show_filesize', 'show_dimensions', 'show_pagecount', 'show_playlength');
+
+  // trap for duplicate calls
+  if( $macro['processed'] ) {
+    return $macro;
+  }
+
+  $macro['processed'] = 1;
 
   foreach($show_keys as $key) {
     if( ! isset($macro[$key]) ) {
