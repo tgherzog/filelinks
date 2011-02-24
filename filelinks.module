@@ -485,31 +485,62 @@ function filelinks_check($macro) {
     $macro['attributes']['type_'] = strtoupper($macro['attributes']['type']);
   }
 
-  if( $macro['path'] ) {
-    $macro['attributes'] = array_merge($macro['attributes'], filelinks_file_attributes($macro['path']));
-  }
+  $macro['attributes'] = array_merge($macro['attributes'], filelinks_file_attributes($macro));
 
   return $macro;
 }
 
-function filelinks_file_attributes($file) {
+function filelinks_file_attributes($macro) {
+
+  if( ! is_array($macro) ) {
+    $macro = array('path' => $macro);
+  }
 
   $attr = array();
+  $file = null;
 
-  $info = pathinfo($file);
-  $ext  = strtolower($info['extension']);
-  if( ($sz = @filesize($file)) === false )
+  if( $macro['url'] ) {
+    // external url: issue a HEAD request to get the file size
+	$ch = curl_init($macro['url']);
+	curl_setopt($ch, CURLOPT_HEADER, 1);
+	curl_setopt($ch, CURLOPT_NOBODY, 1);
+	curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+
+	curl_exec($ch);
+	$code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+	$sz = curl_getinfo($ch, CURLINFO_CONTENT_LENGTH_DOWNLOAD);
+	curl_close($ch);
+	if( $code == 200 ) {
+	  $attr['size'] = $sz;
+	}
+  }
+  elseif( $macro['path'] ) {
+	$file = $macro['path'];
+
+	$info = pathinfo($file);
+	$ext  = strtolower($info['extension']);
+	if( ($sz = @filesize($file)) === false )
+	  return $attr;
+
+	$attr['size'] = $sz;
+  }
+  else {
     return $attr;
-
-  $attr['size'] = $sz;
+  }
 
   // Also show in readable form
+  $sz = $attr['size'];
   if( $sz > 1048756 )
     $attr['size_'] = number_format($sz/1048756, 1, '.', '') . '&nbsp;Mb';
   elseif( $sz > 1024 )
     $attr['size_'] = number_format($sz/1024, 0) . '&nbsp;Kb';
   else
     $attr['size_'] = number_format($sz, 0) . '&nbsp;bytes';
+
+  // The rest only works on local files
+  if( ! $file ) {
+    return $attr;
+  }
 
   if( $ext == 'pdf' ) {
     if( ($c = filelinks_pdf_pagecount($file)) !== false ) {
