@@ -2,7 +2,7 @@
 
 function filelinks_admin() {
 
-  $settings = variable_get('filelinks_settings', array('show_filetype' => 1, 'show_filesize' => 1, 'show_dimensions' => 1, 'show_pagecount' => 1, 'show_playlength' => 1, 'pdfinfo' => '/usr/local/bin/pdfinfo', 'paths' => array()));
+  $settings = variable_get('filelinks_settings', array('show_filetype' => 1, 'show_filesize' => 1, 'show_dimensions' => 1, 'show_pagecount' => 1, 'show_playlength' => 1, 'usecurl' => 1, 'pdfinfo' => '/usr/local/bin/pdfinfo', 'paths' => array()));
 
   $form['intro'] = array('#value' => '<p>' . t('Specify the configuration for !url.', array('!url' => l(t('filelinks macros'), 'admin/help/filelinks'))) . '</p>');
 
@@ -86,6 +86,14 @@ function filelinks_admin() {
   );
   $form['paths'][] = $item;
 
+  $form['usecurl'] = array(
+    '#type' => 'checkbox',
+	'#title' => t('Use curl to fetch attributes for remote files'),
+	'#description' => t('Filelinks can access and display limited meta data for files on remote servers, that you specify with a full url such as %sample_url. Check this box if you want to use this feature.',
+	  array('%sample_url' => 'http://mycdn.com/file.pdf')),
+    '#default_value' => $settings['usecurl'],
+  );
+
   $form['submit'] = array('#type' => 'submit', '#value' => t('Save configuration'));
 
   return $form;
@@ -137,7 +145,7 @@ function filelinks_admin_validate($form, &$form_state) {
 function filelinks_admin_submit($form, &$form_state) {
 
   $settings = array('paths' => array());
-  foreach(array('show_filetype', 'show_filesize', 'show_dimensions', 'show_pagecount', 'show_playlength', 'pdfinfo') as $key) {
+  foreach(array('show_filetype', 'show_filesize', 'show_dimensions', 'show_pagecount', 'show_playlength', 'pdfinfo', 'usecurl') as $key) {
     $settings[$key] = $form_state['values'][$key];
   }
 
