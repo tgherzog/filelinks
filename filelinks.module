@@ -158,7 +158,12 @@ function filelinks_get_macros($text) {
 	  }
 	}
 
-    $vars['filename'] = str_replace('..', '', $file_name);
+	/* Sanitize:
+
+	   1) strip attempts to access parent directory
+	   2) Assume that &amp; really means &; very likely that a previous filter would have screwed this up for us
+	*/
+    $vars['filename'] = str_replace(array('../', '&amp;'), array('', '&'), $file_name);
     $vars['id'] = strtolower($id);
 
     // the full unaltered filter string is the key for the array of filter attributes
@@ -356,7 +361,16 @@ function filelinks_file_attributes($macro) {
   $attr = array();
   $file = null;
 
-  if( $macro['url'] && filelinks_settings('usecurl') == 1 ) {
+  if( $macro['path'] ) {
+	$file = $macro['path'];
+	$info = pathinfo($file);
+	$ext  = strtolower($info['extension']);
+	if( ($sz = @filesize($file)) === false )
+	  return $attr;
+
+	$attr['size'] = $sz;
+  }
+  elseif( $macro['url'] && filelinks_settings('usecurl') == 1 ) {
     // external url: issue a HEAD request to get the file size
 	$ch = curl_init($macro['url']);
 	curl_setopt($ch, CURLOPT_HEADER, 1);
@@ -370,15 +384,6 @@ function filelinks_file_attributes($macro) {
 	if( $code == 200 ) {
 	  $attr['size'] = $sz;
 	}
-  }
-  elseif( $macro['path'] ) {
-	$file = $macro['path'];
-	$info = pathinfo($file);
-	$ext  = strtolower($info['extension']);
-	if( ($sz = @filesize($file)) === false )
-	  return $attr;
-
-	$attr['size'] = $sz;
   }
   else {
     return $attr;
