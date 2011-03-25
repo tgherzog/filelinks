@@ -89,7 +89,7 @@ function filelinks_help($section, $arg) {
 
 	  $text .= theme('item_list',
 	    array(t('<b>tag:</b> identifies the directory to the macro. It is required, and should be unique.'),
-		t('<b>file system path:</b> a unix-style path: path/to/directory, relative to your Drupal root directory. It can be blank, in which case it the search path is the Drupal root. If the path begins with "/" then it is considered an absolute system path.'),
+		t('<b>location:</b> is either a) a unix-style path: path/to/directory, or b) the url of a RESTful interface for retrieving file meta data (see the sample script in the module directory). In the former case, either absolute or relative paths are allowed; relative paths are construed as relative to your Drupal root directory. It can be blank, in which case it is the search path is the Drupal root. If the path begins with "/" then it is considered an absolute system path.'),
 		  t('<b>url:</b> you can create links to files in other domains so long as they are hosted by the same server as your Drupal site. If you include a url it is prepended to the file name in the link. If the path is an absolute system path and url is empty, then the url to the Drupal root directory is assumed.')));
 
 	  $text .= '<h3>' . t('Parameters') . '</h3>';
@@ -183,6 +183,19 @@ function filelinks_findfile($name, $location='') {
 	$dir = preg_replace('|/$|', '', $dir);  // no trailing slash please
 	$url = preg_replace('|/$|', '', $url);  // no trailing slash please
 
+	if( strpos($dir, 'http://') === 0 ) {
+	  /* Get file meta-data via a RESTful tool: we expect a serialized PHP array as return.
+	     In this instance, we ignore the $url parameter */
+	  $url = $dir . '?' . drupal_query_string_encode(array('tag' => $id, 'path' => $name));
+	  if( $contents = file_get_contents($url) ) {
+	    $data = unserialize($contents);
+		if( $data['status'] == 200 ) {
+		  return $data;
+		}
+	  }
+
+	  return array();
+	}
 	$fullpath = ($dir ? "$dir/" : $dir) . $name;
 	if( file_exists($fullpath) && (strtolower($id) == $location || ! $location) ) {
 	  if( $url ) {
@@ -331,7 +344,10 @@ function filelinks_check($macro) {
   }
 
   // at a minimum, do the extension
-  $macro['attributes'] = array();
+  if( ! is_array($macro['attributes']) ) {
+	$macro['attributes'] = array();
+  }
+
   $ext = strtolower($info['extension']);
   if( $ext == 'jpg' ) {
     $ext = 'jpeg';
@@ -352,6 +368,29 @@ function filelinks_check($macro) {
 }
 
 function filelinks_file_attributes($macro) {
+
+  $attr = _filelinks_file_attributes($macro);
+
+  // Also show in readable form
+  if( $attr['size'] ) {
+	$sz = $attr['size'];
+	if( $sz > 1048756 )
+	  $attr['size_'] = number_format($sz/1048756, 1, '.', '') . '&nbsp;Mb';
+	elseif( $sz > 1024 )
+	  $attr['size_'] = number_format($sz/1024, 0) . '&nbsp;Kb';
+	else
+	  $attr['size_'] = number_format($sz, 0) . '&nbsp;bytes';
+  }
+
+  return $attr;
+}
+
+function _filelinks_file_attributes($macro) {
+
+  if( isset($macro['attributes']['size']) ) {
+	// Under some circumstances, attributes will already be set by an external interface, so return if that's so
+    return $macro['attributes'];
+  }
 
   // also support passing a path as a string
   if( ! is_array($macro) ) {
@@ -388,15 +427,6 @@ function filelinks_file_attributes($macro) {
   else {
     return $attr;
   }
-
-  // Also show in readable form
-  $sz = $attr['size'];
-  if( $sz > 1048756 )
-    $attr['size_'] = number_format($sz/1048756, 1, '.', '') . '&nbsp;Mb';
-  elseif( $sz > 1024 )
-    $attr['size_'] = number_format($sz/1024, 0) . '&nbsp;Kb';
-  else
-    $attr['size_'] = number_format($sz, 0) . '&nbsp;bytes';
 
   // The rest only works on local files
   if( ! $file ) {

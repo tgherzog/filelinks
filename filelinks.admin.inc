@@ -116,7 +116,7 @@ function theme_filelinks_admin(&$form) {
   $rows[] = array(array('data' => t('Add a new search path:'), 'colspan' => 3));
   $rows[] = $row;
 
-  $table = theme('table', array(t('Tag'), t('File System Path'), t('URL')), $rows);
+  $table = theme('table', array(t('Tag'), t('Location'), t('URL')), $rows);
   $form['paths']['#value'] = $table;
   return drupal_render($form);
 }
