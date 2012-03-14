@@ -1,4 +1,5 @@
 name = File Links
+project = File Links
 description = Input filter to easily add hyperlinks and descriptions to files on your website's server
 dependencies[] = filter
 core = 6.x

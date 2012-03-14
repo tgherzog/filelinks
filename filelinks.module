@@ -122,7 +122,7 @@ function filelinks_get_macros($text) {
     $current_macro = '[flink'. $macro .']';
     $param = array_map('trim', explode('|', $macro));
     $file_name = array_shift($param); // first parameter is the file name, not key=value
-    if( preg_match('/^_(\w+)\s+(.+)/', $file_name, $parts) ) {
+    if( preg_match('/^_(\w+\*?)\s+(.+)/', $file_name, $parts) ) {
       $id = $parts[1];
       $file_name = $parts[2];
     }
@@ -180,13 +180,24 @@ function filelinks_findfile($name, $location='') {
   foreach($settings['paths'] as $path) {
 	list($id,$dir,$url) = array($path['tag'], $path['path'], $path['url']);
 
+	if( substr($id, -1, 1) == '*' ) {
+	  // Location is ONLY to be searched if specified
+	  if( $id != $location . '*' ) {
+	    continue;
+	  }
+	}
+	elseif( $location && strtolower($id) != $location) {
+	  // Location specific: does not match
+	  continue;
+	}
+
 	$dir = preg_replace('|/$|', '', $dir);  // no trailing slash please
 	$url = preg_replace('|/$|', '', $url);  // no trailing slash please
 
 	if( strpos($dir, 'http://') === 0 ) {
 	  /* Get file meta-data via a RESTful tool: we expect a serialized PHP array as return.
 	     In this instance, we ignore the $url parameter */
-	  $url = $dir . '?' . drupal_query_string_encode(array('tag' => $id, 'path' => $name));
+	  $url = $dir . '?' . drupal_query_string_encode(array('tag' => preg_replace('/\W/', '', $id), 'path' => $name));
 	  if( $contents = file_get_contents($url) ) {
 	    $data = unserialize($contents);
 		if( $data['status'] == 200 ) {
@@ -197,7 +208,7 @@ function filelinks_findfile($name, $location='') {
 	  return array();
 	}
 	$fullpath = ($dir ? "$dir/" : $dir) . $name;
-	if( file_exists($fullpath) && (strtolower($id) == $location || ! $location) ) {
+	if( file_exists($fullpath) ) {
 	  if( $url ) {
 		$url = $url . '/' . $name;
 	  }
@@ -455,7 +466,7 @@ function _filelinks_file_attributes($macro) {
     fseek($f, 6);
     $attr = array_merge($attr, unpack("vwidth/vheight", fread($f, 4)));
   }
-  elseif( $ext == 'jpeg' ) {
+  elseif( $ext == 'jpeg' || $ext == 'jpg' ) {
     fseek($f, 0);
     $attr['width'] = $attr['height'] = '???';
     while( !feof($f) ) {
