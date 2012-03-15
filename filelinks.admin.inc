@@ -99,7 +99,7 @@ function filelinks_admin() {
   return $form;
 }
 
-function theme_filelinks_admin(&$form) {
+function theme_filelinks_admin($form) {
 
   $rows[] = array();
   $i = 0;
